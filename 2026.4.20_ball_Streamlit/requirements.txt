@@ -1,4 +1,3 @@
-streamlit-autorefresh
 streamlit
 numpy
 matplotlib
