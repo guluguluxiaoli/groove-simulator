@@ -1,13 +1,6 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import PathPatch
-from matplotlib.path import Path
-
-# 禁用中文字体警告（使用英文标签）
-plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+import json
 
 # ================== 物理计算 ==================
 def compute_trajectory(M, m, a, b):
@@ -19,57 +12,12 @@ def compute_trajectory(M, m, a, b):
     x_ball = X0 + A * np.cos(phi_frames)
     y_ball = b * np.sin(phi_frames)
     groove_center_x = m * (a - x_ball) / M
-    return x_ball, y_ball, groove_center_x, X0, A
+    return x_ball.tolist(), y_ball.tolist(), groove_center_x.tolist(), float(X0), float(A)
 
-# ================== 凹槽形状 ==================
-def create_groove_path(cx, a, b, base_height=0.3):
-    x_left = cx - a
-    x_right = cx + a
-    y_bottom = -b - base_height
-    verts = []
-    codes = []
-    verts.append((x_left, y_bottom))
-    codes.append(Path.MOVETO)
-    verts.append((x_right, y_bottom))
-    codes.append(Path.LINETO)
-    verts.append((x_right, 0))
-    codes.append(Path.LINETO)
-    theta = np.linspace(2*np.pi, np.pi, 50)
-    x_arc = cx + a * np.cos(theta)
-    y_arc = b * np.sin(theta)
-    for i in range(1, len(theta)-1):
-        verts.append((x_arc[i], y_arc[i]))
-        codes.append(Path.LINETO)
-    verts.append((x_left, 0))
-    codes.append(Path.LINETO)
-    verts.append((x_left, y_bottom))
-    codes.append(Path.CLOSEPOLY)
-    return Path(verts, codes)
-
-# ================== 坐标系（刻度单侧） ==================
-def draw_fixed_coordinate_system(ax, x_range, y_range, tick_step=0.5):
-    xmin, xmax = x_range
-    ymin, ymax = y_range
-    ax.arrow(xmin, 0, xmax - xmin - 0.2, 0, head_width=0.08, head_length=0.12,
-             fc='black', ec='black', length_includes_head=True, lw=1, zorder=10)
-    ax.arrow(0, ymin, 0, ymax - ymin - 0.2, head_width=0.08, head_length=0.12,
-             fc='black', ec='black', length_includes_head=True, lw=1, zorder=10)
-    xticks = np.arange(np.ceil(xmin / tick_step) * tick_step, xmax, tick_step)
-    for x in xticks:
-        if abs(x) < 1e-6:
-            continue
-        ax.plot([x, x], [0, 0.08], 'k-', lw=0.5, zorder=10)
-    yticks = np.arange(np.ceil(ymin / tick_step) * tick_step, ymax, tick_step)
-    for y in yticks:
-        if abs(y) < 1e-6:
-            continue
-        ax.plot([0, 0.08], [y, y], 'k-', lw=0.5, zorder=10)
-
-# ================== Streamlit 界面 ==================
+# Streamlit UI
 st.set_page_config(layout="wide")
 st.title("Semi-elliptical Groove Simulator")
 
-# 侧边栏参数调节
 with st.sidebar:
     st.header("Parameters")
     M = st.slider("Groove mass M", 0.2, 5.0, 1.0, 0.01)
@@ -78,96 +26,253 @@ with st.sidebar:
     b = st.slider("Semi-minor axis b", 0.5, 2.5, 1.0, 0.01)
     offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
 
-    if st.button("Reset defaults"):
-        st.session_state.frame_idx = 0
-        st.session_state.playing = False
-        st.rerun()
-
-# 计算轨迹
+# 计算轨迹数据
 x_ball, y_ball, groove_center_x, X0, A = compute_trajectory(M, m, a, b)
-x_ball_display = x_ball + offset
-groove_center_x_display = groove_center_x + offset
-X0_display = X0 + offset
-frames = len(x_ball_display)
+frames = len(x_ball)
 
-# 初始化 session_state
-if 'frame_idx' not in st.session_state:
-    st.session_state.frame_idx = 0
-if 'playing' not in st.session_state:
-    st.session_state.playing = False
+# 固定坐标范围
+xmin = min(-a-1.5, (X0 + offset) - A - 0.5) + offset
+xmax = max(a + X0 + 1.5, a + offset + 0.5) + 0.5
+ymin = -b - 0.8
+ymax = b + 0.8
 
-# 播放/暂停按钮
-col1, col2, col3 = st.columns([1, 1, 2])
-with col1:
-    play_label = "⏸️ Pause" if st.session_state.playing else "▶️ Play"
-    if st.button(play_label):
-        st.session_state.playing = not st.session_state.playing
-        if st.session_state.playing:
-            # 播放时强制刷新一次，启动 autorefresh
-            st.rerun()
-with col2:
-    if st.button("⏮️ Reset frame"):
-        st.session_state.frame_idx = 0
-        st.session_state.playing = False
-with col3:
-    st.write(f"Frame: {st.session_state.frame_idx+1} / {frames}")
+# 准备传递给 JavaScript 的数据
+data = {
+    "frames": frames,
+    "x_ball": x_ball,
+    "y_ball": y_ball,
+    "groove_center_x": groove_center_x,
+    "offset": offset,
+    "a": a,
+    "b": b,
+    "xmin": xmin,
+    "xmax": xmax,
+    "ymin": ymin,
+    "ymax": ymax,
+    "X0": X0,
+    "A": A
+}
 
-# 手动帧滑块（当播放时禁用滑块自动跳转，避免冲突）
-slider_key = "frame_slider_disabled" if st.session_state.playing else "frame_slider"
-frame_slider = st.slider("Select frame", 0, frames-1, st.session_state.frame_idx, key=slider_key, disabled=st.session_state.playing)
-if not st.session_state.playing and frame_slider != st.session_state.frame_idx:
-    st.session_state.frame_idx = frame_slider
-
-# 自动刷新核心：仅在 playing = True 时启用 autorefresh
-if st.session_state.playing:
-    # 每 50 毫秒刷新一次页面（20 fps）
-    st_autorefresh(interval=50, key="auto_play", debounce=False)
-    # 每次刷新自动增加帧索引
-    new_idx = st.session_state.frame_idx + 1
-    if new_idx >= frames:
-        new_idx = 0
-    st.session_state.frame_idx = new_idx
-
-# 绘图
-fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
-ax.set_aspect('equal')
-ax.grid(True, linestyle=':', alpha=0.3)
-ax.set_xlabel('x (m)')
-ax.set_ylabel('y (m)')
-ax.set_title('Ball motion simulation')
-
-xmin = min(-a-1.5, X0_display - A - 0.5) + offset
-xmax = max(a+X0_display+1.5, a+offset+0.5) + 0.5
-ymin = -b-0.8
-ymax = b+0.8
-draw_fixed_coordinate_system(ax, (xmin, xmax), (ymin, ymax), tick_step=0.5)
-
-phi_traj = np.linspace(np.pi, 2*np.pi, 300)
-x_traj_static = X0_display + A * np.cos(phi_traj)
-y_traj_static = b * np.sin(phi_traj)
-ax.plot(x_traj_static, y_traj_static, 'b--', lw=1.5, alpha=0.7, label='Theoretical trajectory')
-
-ax.plot(a + offset, 0, 'go', markersize=6, alpha=0.6, label='Right endpoint')
-left_x = X0_display - A
-ax.plot(left_x, 0, 'mo', markersize=6, alpha=0.6, label='Left endpoint')
-ax.plot(X0_display, -b, 'co', markersize=6, alpha=0.6, label='Lowest point')
-
-frame = st.session_state.frame_idx
-cx = groove_center_x_display[frame]
-path = create_groove_path(cx, a, b, base_height=0.3)
-groove_patch = PathPatch(path, facecolor='lightskyblue', edgecolor='deepskyblue',
-                         linewidth=1.5, alpha=0.8, zorder=0)
-ax.add_patch(groove_patch)
-
-phi_ellipse_lower = np.linspace(np.pi, 2*np.pi, 200)
-x_ellipse = cx + a * np.cos(phi_ellipse_lower)
-y_ellipse = b * np.sin(phi_ellipse_lower)
-ax.plot(x_ellipse, y_ellipse, 'k-', lw=2, label='Elliptical groove')
-
-ax.plot(x_ball_display[frame], y_ball[frame], 'ro', markersize=8, zorder=5, label='Ball')
-
-ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=9)
-ax.set_xlim(xmin, xmax)
-ax.set_ylim(ymin, ymax)
-
-st.pyplot(fig)
+# 使用 st.components.v1.html 嵌入自定义前端动画
+html_code = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{ margin: 0; padding: 0; }}
+        canvas {{ border: 1px solid #ddd; background: white; }}
+        .controls {{ margin-top: 10px; }}
+        button {{ margin: 5px; padding: 5px 15px; font-size: 16px; }}
+        .info {{ display: inline-block; margin-left: 20px; font-family: monospace; }}
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div class="controls">
+        <button id="playBtn">▶️ Play</button>
+        <button id="pauseBtn">⏸️ Pause</button>
+        <button id="resetBtn">⏮️ Reset</button>
+        <span class="info">Frame: <span id="frameInfo">0</span> / {frames}</span>
+    </div>
+    <script>
+        const data = {json.dumps(data)};
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 坐标变换：canvas 原点在左上角，y 向下为正
+        const width = canvas.width, height = canvas.height;
+        const xmin = data.xmin, xmax = data.xmax;
+        const ymin = data.ymin, ymax = data.ymax;
+        
+        function toCanvasX(x) {{
+            return ((x - xmin) / (xmax - xmin)) * width;
+        }}
+        function toCanvasY(y) {{
+            return height - ((y - ymin) / (ymax - ymin)) * height;
+        }}
+        
+        // 绘制坐标系（带箭头、刻度）
+        function drawAxes() {{
+            ctx.save();
+            ctx.strokeStyle = 'black';
+            ctx.fillStyle = 'black';
+            ctx.lineWidth = 1;
+            // X轴
+            const y0 = toCanvasY(0);
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(xmin), y0);
+            ctx.lineTo(toCanvasX(xmax), y0);
+            ctx.stroke();
+            // 箭头
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(xmax)-8, y0-4);
+            ctx.lineTo(toCanvasX(xmax), y0);
+            ctx.lineTo(toCanvasX(xmax)-8, y0+4);
+            ctx.fill();
+            // Y轴
+            const x0 = toCanvasX(0);
+            ctx.beginPath();
+            ctx.moveTo(x0, toCanvasY(ymin));
+            ctx.lineTo(x0, toCanvasY(ymax));
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x0-4, toCanvasY(ymax)+8);
+            ctx.lineTo(x0, toCanvasY(ymax));
+            ctx.lineTo(x0+4, toCanvasY(ymax)+8);
+            ctx.fill();
+            // 刻度
+            const tickStep = 0.5;
+            for (let x = Math.ceil(xmin/tickStep)*tickStep; x <= xmax; x+=tickStep) {{
+                if (Math.abs(x) < 1e-6) continue;
+                const cx = toCanvasX(x);
+                ctx.beginPath();
+                ctx.moveTo(cx, y0);
+                ctx.lineTo(cx, y0-5);
+                ctx.stroke();
+            }}
+            for (let y = Math.ceil(ymin/tickStep)*tickStep; y <= ymax; y+=tickStep) {{
+                if (Math.abs(y) < 1e-6) continue;
+                const cy = toCanvasY(y);
+                ctx.beginPath();
+                ctx.moveTo(x0, cy);
+                ctx.lineTo(x0+5, cy);
+                ctx.stroke();
+            }}
+            ctx.restore();
+        }}
+        
+        // 绘制凹槽（矩形+半椭圆）
+        function drawGroove(cx) {{
+            const a = data.a, b = data.b, baseHeight = 0.3;
+            const left = cx - a, right = cx + a;
+            const bottomY = -b - baseHeight;
+            const topY = 0;
+            // 矩形部分
+            ctx.fillStyle = 'lightskyblue';
+            ctx.strokeStyle = 'deepskyblue';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.rect(toCanvasX(left), toCanvasY(bottomY), toCanvasX(right)-toCanvasX(left), toCanvasY(topY)-toCanvasY(bottomY));
+            ctx.fill();
+            ctx.stroke();
+            // 半椭圆弧（下半部分）
+            ctx.beginPath();
+            for (let t = Math.PI; t <= 2*Math.PI; t+=0.05) {{
+                let x = cx + a * Math.cos(t);
+                let y = b * Math.sin(t);
+                if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
+                else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+            }}
+            ctx.stroke();
+        }}
+        
+        // 绘制小球
+        function drawBall(x, y) {{
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(toCanvasX(x), toCanvasY(y), 6, 0, 2*Math.PI);
+            ctx.fill();
+        }}
+        
+        // 绘制理论轨迹（半椭圆虚线）
+        function drawTheoreticalTrajectory() {{
+            const X0 = data.X0 + data.offset;
+            const A = data.A;
+            const b = data.b;
+            ctx.save();
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let t = Math.PI; t <= 2*Math.PI; t+=0.02) {{
+                let x = X0 + A * Math.cos(t);
+                let y = b * Math.sin(t);
+                if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
+                else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+            }}
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }}
+        
+        // 绘制特殊点
+        function drawSpecialPoints() {{
+            ctx.fillStyle = 'green';
+            const rightX = data.a + data.offset;
+            ctx.beginPath();
+            ctx.arc(toCanvasX(rightX), toCanvasY(0), 4, 0, 2*Math.PI);
+            ctx.fill();
+            ctx.fillStyle = 'magenta';
+            const leftX = data.X0 + data.offset - data.A;
+            ctx.beginPath();
+            ctx.arc(toCanvasX(leftX), toCanvasY(0), 4, 0, 2*Math.PI);
+            ctx.fill();
+            ctx.fillStyle = 'cyan';
+            const lowX = data.X0 + data.offset;
+            ctx.beginPath();
+            ctx.arc(toCanvasX(lowX), toCanvasY(-data.b), 4, 0, 2*Math.PI);
+            ctx.fill();
+        }}
+        
+        let currentFrame = 0;
+        let playing = false;
+        let intervalId = null;
+        
+        function render() {{
+            ctx.clearRect(0, 0, width, height);
+            drawAxes();
+            drawTheoreticalTrajectory();
+            drawSpecialPoints();
+            const cx = data.groove_center_x[currentFrame] + data.offset;
+            drawGroove(cx);
+            // 绘制椭圆轨道线（下半部分）
+            ctx.beginPath();
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            for (let t = Math.PI; t <= 2*Math.PI; t+=0.02) {{
+                let x = cx + data.a * Math.cos(t);
+                let y = data.b * Math.sin(t);
+                if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
+                else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+            }}
+            ctx.stroke();
+            drawBall(data.x_ball[currentFrame] + data.offset, data.y_ball[currentFrame]);
+            document.getElementById('frameInfo').innerText = currentFrame+1;
+        }}
+        
+        function play() {{
+            if (intervalId) clearInterval(intervalId);
+            playing = true;
+            intervalId = setInterval(() => {{
+                if (playing) {{
+                    currentFrame = (currentFrame + 1) % data.frames;
+                    render();
+                }}
+            }}, 50);
+        }}
+        
+        function pause() {{
+            playing = false;
+            if (intervalId) {{
+                clearInterval(intervalId);
+                intervalId = null;
+            }}
+        }}
+        
+        function reset() {{
+            pause();
+            currentFrame = 0;
+            render();
+        }}
+        
+        document.getElementById('playBtn').onclick = play;
+        document.getElementById('pauseBtn').onclick = pause;
+        document.getElementById('resetBtn').onclick = reset;
+        
+        render();
+    </script>
+</body>
+</html>
+"""
+st.components.v1.html(html_code, height=650, width=850)
