@@ -2,29 +2,52 @@ import streamlit as st
 import numpy as np
 import json
 
-def compute_static_data(M, m, a, b, offset):
-    return {
-        "M": M, "m": m, "a": a, "b": b, "offset": offset,
-        "g": 9.8
-    }
+# 物理计算函数（保持不变）
+def compute_trajectory(M, m, a, b):
+    X0 = m * a / (M + m)
+    A = M * a / (M + m)
+    phi_forward = np.linspace(2*np.pi, np.pi, 100)
+    phi_back = np.linspace(np.pi, 2*np.pi, 100)
+    phi_frames = np.concatenate([phi_forward, phi_back])
+    x_ball = X0 + A * np.cos(phi_frames)
+    y_ball = b * np.sin(phi_frames)
+    groove_center_x = m * (a - x_ball) / M
+    return x_ball.tolist(), y_ball.tolist(), groove_center_x.tolist(), float(X0), float(A)
 
 st.set_page_config(layout="wide")
-st.title("Semi-elliptical Groove Simulator (Real Physics)")
+st.title("Semi-elliptical Groove Simulator")
 
 with st.sidebar:
     st.header("Parameters")
-    M = st.slider("Groove mass M (kg)", 0.2, 5.0, 1.0, 0.01)
-    m = st.slider("Ball mass m (kg)", 0.2, 5.0, 1.0, 0.01)
-    a = st.slider("Semi-major axis a (m)", 1.0, 4.0, 2.0, 0.01)
-    b = st.slider("Semi-minor axis b (m)", 0.5, 2.5, 1.0, 0.01)
+    M = st.slider("Groove mass M", 0.2, 5.0, 1.0, 0.01)
+    m = st.slider("Ball mass m", 0.2, 5.0, 1.0, 0.01)
+    a = st.slider("Semi-major axis a", 1.0, 4.0, 2.0, 0.01)
+    b = st.slider("Semi-minor axis b", 0.5, 2.5, 1.0, 0.01)
     offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
 
-static = compute_static_data(M, m, a, b, offset)
+x_ball, y_ball, groove_center_x, X0, A = compute_trajectory(M, m, a, b)
+frames = len(x_ball)
 
-xmin = -a - 1.5 + offset
-xmax = a + 1.5 + offset
+xmin = min(-a-1.5, (X0 + offset) - A - 0.5) + offset
+xmax = max(a + X0 + 1.5, a + offset + 0.5) + 0.5
 ymin = -b - 0.8
 ymax = b + 0.8
+
+data = {
+    "frames": frames,
+    "x_ball": x_ball,
+    "y_ball": y_ball,
+    "groove_center_x": groove_center_x,
+    "offset": offset,
+    "a": a,
+    "b": b,
+    "xmin": xmin,
+    "xmax": xmax,
+    "ymin": ymin,
+    "ymax": ymax,
+    "X0": X0,
+    "A": A
+}
 
 html_code = f"""
 <!DOCTYPE html>
@@ -33,19 +56,55 @@ html_code = f"""
     <meta charset="utf-8">
     <style>
         body {{ margin: 0; padding: 0; font-family: sans-serif; }}
-        .main-container {{ display: flex; flex-wrap: wrap; align-items: flex-start; }}
-        .canvas-container {{ flex: 0 0 auto; }}
+        .main-container {{
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-start;
+            align-items: flex-start;
+        }}
+        .canvas-container {{
+            flex: 0 0 auto;
+        }}
         .legend-container {{
-            margin-left: 20px; background: #f9f9f9; border: 1px solid #ccc;
-            padding: 12px; width: 200px; border-radius: 5px;
+            margin-left: 20px;
+            background: #f9f9f9;
+            border: 1px solid #ccc;
+            padding: 12px;
+            width: 200px;
+            border-radius: 5px;
         }}
         .legend-container h4 {{ margin: 0 0 10px 0; }}
-        .legend-item {{ display: flex; align-items: center; margin-bottom: 8px; }}
-        .legend-color {{ width: 20px; height: 20px; margin-right: 10px; border: 1px solid #888; }}
-        .controls {{ margin-top: 15px; clear: both; }}
-        button {{ margin: 5px; padding: 5px 15px; font-size: 16px; cursor: pointer; }}
-        .info {{ display: inline-block; margin-left: 20px; font-family: monospace; font-size: 14px; }}
-        canvas {{ border: 1px solid #ddd; background: white; }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #888;
+        }}
+        .controls {{
+            margin-top: 15px;
+            clear: both;
+        }}
+        button {{
+            margin: 5px;
+            padding: 5px 15px;
+            font-size: 16px;
+            cursor: pointer;
+        }}
+        .info {{
+            display: inline-block;
+            margin-left: 20px;
+            font-family: monospace;
+            font-size: 14px;
+        }}
+        canvas {{
+            border: 1px solid #ddd;
+            background: white;
+        }}
     </style>
 </head>
 <body>
@@ -68,90 +127,24 @@ html_code = f"""
     <button id="playBtn">▶️ Play</button>
     <button id="pauseBtn">⏸️ Pause</button>
     <button id="resetBtn">⏮️ Reset</button>
-    <span class="info">Time: <span id="timeInfo">0.00</span> s</span>
+    <span class="info">Frame: <span id="frameInfo">0</span> / {frames}</span>
 </div>
 <script>
-    const params = {json.dumps(static)};
-    const M = params.M, m = params.m, a = params.a, b = params.b, offset = params.offset, g = params.g;
-    
-    // 坐标系
+    const data = {json.dumps(data)};
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+
     const width = canvas.width, height = canvas.height;
-    const xmin = {xmin}, xmax = {xmax};
-    const ymin = {ymin}, ymax = {ymax};
-    
-    function toCanvasX(x) {{ return ((x - xmin) / (xmax - xmin)) * width; }}
-    function toCanvasY(y) {{ return height - ((y - ymin) / (ymax - ymin)) * height; }}
-    
-    // 物理变量
-    let theta = 1e-6;      // 微小初始偏移，避免卡在端点
-    let omega = 0.0;
-    let currentTime = 0.0;
-    let playing = false;
-    let animationId = null;
-    let lastTimestamp = null;
-    
-    // 辅助函数：等效转动惯量 I_eff(theta)
-    function I_eff(th) {{
-        const cosT = Math.cos(th);
-        const sinT = Math.sin(th);
-        return m * b * b * cosT * cosT + (m*m/(M+m)) * a * a * sinT * sinT;
+    const xmin = data.xmin, xmax = data.xmax;
+    const ymin = data.ymin, ymax = data.ymax;
+
+    function toCanvasX(x) {{
+        return ((x - xmin) / (xmax - xmin)) * width;
     }}
-    
-    // 导数 dI_eff/dtheta
-    function dI_eff_dtheta(th) {{
-        const cosT = Math.cos(th);
-        const sinT = Math.sin(th);
-        return -2 * m * b * b * cosT * sinT + 2 * (m*m/(M+m)) * a * a * sinT * cosT;
+    function toCanvasY(y) {{
+        return height - ((y - ymin) / (ymax - ymin)) * height;
     }}
-    
-    // 角加速度 alpha = - ( dI_eff/dtheta * omega^2 / 2 + m g b cosT ) / I_eff
-    function angular_acceleration(th, om) {{
-        const cosT = Math.cos(th);
-        const dI = dI_eff_dtheta(th);
-        const I = I_eff(th);
-        const numerator = -0.5 * dI * om * om - m * g * b * cosT;
-        return numerator / I;
-    }}
-    
-    // 欧拉积分更新 (dt 秒)
-    function integrate(dt) {{
-        const alpha = angular_acceleration(theta, omega);
-        omega += alpha * dt;
-        theta += omega * dt;
-        // 边界反射：theta 范围 [0, pi]
-        if (theta < 0) {{
-            theta = -theta;
-            omega = -omega;
-        }}
-        if (theta > Math.PI) {{
-            theta = 2*Math.PI - theta;
-            omega = -omega;
-        }}
-        // 小阻尼防止数值爆炸（可选，极小）
-        omega *= 0.9999;
-    }}
-    
-    // 根据当前 theta 计算凹槽中心和小球地面坐标
-    function getGrooveCenter(th) {{
-        const x_rel0 = a;  // 初始右端点相对位置
-        const x_rel = a * Math.cos(th);
-        const X_groove = - (m/(M+m)) * (x_rel - x_rel0);
-        return X_groove + offset;
-    }}
-    
-    function getBallGroundPosition(th) {{
-        const x_rel = a * Math.cos(th);
-        const y_rel = -b * Math.sin(th);
-        const x_rel0 = a;
-        const X_groove = - (m/(M+m)) * (x_rel - x_rel0);
-        const ball_x = x_rel + X_groove + offset;
-        const ball_y = y_rel;
-        return [ball_x, ball_y];
-    }}
-    
-    // 绘图函数（与之前相同）
+
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -196,9 +189,9 @@ html_code = f"""
         }}
         ctx.restore();
     }}
-    
+
     function drawGroove(cx) {{
-        const baseHeight = 0.3;
+        const a = data.a, b = data.b, baseHeight = 0.3;
         const left = cx - a, right = cx + a;
         const bottomY = -b - baseHeight;
         const topY = 0;
@@ -221,32 +214,18 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-    
-    function drawEllipticalTrack(cx) {{
-        ctx.save();
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let t = Math.PI; t <= 2*Math.PI; t+=0.02) {{
-            let x = cx + a * Math.cos(t);
-            let y = b * Math.sin(t);
-            if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
-            else ctx.lineTo(toCanvasX(x), toCanvasY(y));
-        }}
-        ctx.stroke();
-        ctx.restore();
-    }}
-    
+
     function drawBall(x, y) {{
         ctx.fillStyle = 'red';
         ctx.beginPath();
         ctx.arc(toCanvasX(x), toCanvasY(y), 6, 0, 2*Math.PI);
         ctx.fill();
     }}
-    
+
     function drawTheoreticalTrajectory() {{
-        const X0 = (m*a)/(M+m) + offset;
-        const A = (M*a)/(M+m);
+        const X0 = data.X0 + data.offset;
+        const A = data.A;
+        const b = data.b;
         ctx.save();
         ctx.setLineDash([5, 5]);
         ctx.strokeStyle = 'blue';
@@ -262,91 +241,86 @@ html_code = f"""
         ctx.setLineDash([]);
         ctx.restore();
     }}
-    
+
     function drawSpecialPoints() {{
-        const X0 = (m*a)/(M+m) + offset;
-        const A = (M*a)/(M+m);
         ctx.fillStyle = 'green';
-        const rightX = a + offset;
+        const rightX = data.a + data.offset;
         ctx.beginPath();
         ctx.arc(toCanvasX(rightX), toCanvasY(0), 4, 0, 2*Math.PI);
         ctx.fill();
         ctx.fillStyle = 'magenta';
-        const leftX = X0 - A;
+        const leftX = data.X0 + data.offset - data.A;
         ctx.beginPath();
         ctx.arc(toCanvasX(leftX), toCanvasY(0), 4, 0, 2*Math.PI);
         ctx.fill();
         ctx.fillStyle = 'cyan';
-        const lowX = X0;
+        const lowX = data.X0 + data.offset;
         ctx.beginPath();
-        ctx.arc(toCanvasX(lowX), toCanvasY(-b), 4, 0, 2*Math.PI);
+        ctx.arc(toCanvasX(lowX), toCanvasY(-data.b), 4, 0, 2*Math.PI);
         ctx.fill();
     }}
-    
-    function renderFrame() {{
+
+    function drawEllipticalTrack(cx) {{
+        ctx.save();
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let t = Math.PI; t <= 2*Math.PI; t+=0.02) {{
+            let x = cx + data.a * Math.cos(t);
+            let y = data.b * Math.sin(t);
+            if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
+            else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+        }}
+        ctx.stroke();
+        ctx.restore();
+    }}
+
+    let currentFrame = 0;
+    let playing = false;
+    let intervalId = null;
+
+    function render() {{
         ctx.clearRect(0, 0, width, height);
         drawAxes();
         drawTheoreticalTrajectory();
         drawSpecialPoints();
-        const cx = getGrooveCenter(theta);
+        const cx = data.groove_center_x[currentFrame] + data.offset;
         drawGroove(cx);
         drawEllipticalTrack(cx);
-        const [ballX, ballY] = getBallGroundPosition(theta);
-        drawBall(ballX, ballY);
-        document.getElementById('timeInfo').innerText = currentTime.toFixed(2);
+        drawBall(data.x_ball[currentFrame] + data.offset, data.y_ball[currentFrame]);
+        document.getElementById('frameInfo').innerText = currentFrame+1;
     }}
-    
-    function animationLoop(now) {{
-        if (!playing) return;
-        if (lastTimestamp === null) {{
-            lastTimestamp = now;
-            requestAnimationFrame(animationLoop);
-            return;
-        }}
-        let dt = Math.min(0.02, (now - lastTimestamp) / 1000);
-        if (dt > 0) {{
-            integrate(dt);
-            currentTime += dt;
-        }}
-        lastTimestamp = now;
-        renderFrame();
-        requestAnimationFrame(animationLoop);
-    }}
-    
-    function startAnimation() {{
-        if (animationId) cancelAnimationFrame(animationId);
+
+    function play() {{
+        if (intervalId) clearInterval(intervalId);
         playing = true;
-        lastTimestamp = null;
-        animationId = requestAnimationFrame(animationLoop);
+        intervalId = setInterval(() => {{
+            if (playing) {{
+                currentFrame = (currentFrame + 1) % data.frames;
+                render();
+            }}
+        }}, 50);
     }}
-    
-    function stopAnimation() {{
+
+    function pause() {{
         playing = false;
-        if (animationId) {{
-            cancelAnimationFrame(animationId);
-            animationId = null;
+        if (intervalId) {{
+            clearInterval(intervalId);
+            intervalId = null;
         }}
     }}
-    
-    function resetSimulation() {{
-        stopAnimation();
-        theta = 1e-6;   // 微小偏移
-        omega = 0.0;
-        currentTime = 0.0;
-        renderFrame();
+
+    function reset() {{
+        pause();
+        currentFrame = 0;
+        render();
     }}
-    
-    document.getElementById('playBtn').onclick = () => {{
-        if (!playing) startAnimation();
-    }};
-    document.getElementById('pauseBtn').onclick = () => {{
-        stopAnimation();
-    }};
-    document.getElementById('resetBtn').onclick = () => {{
-        resetSimulation();
-    }};
-    
-    resetSimulation();
+
+    document.getElementById('playBtn').onclick = play;
+    document.getElementById('pauseBtn').onclick = pause;
+    document.getElementById('resetBtn').onclick = reset;
+
+    render();
 </script>
 </body>
 </html>
