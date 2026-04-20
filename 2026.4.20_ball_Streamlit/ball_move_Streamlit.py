@@ -189,10 +189,12 @@ html_code = f"""
         ctx.restore();
     }}
 
-    // 优化后的凹槽绘制：完整填充矩形+椭圆弧区域
+    // 凹槽形状：矩形底部 + 两侧竖直壁 + 顶部椭圆弧凹陷，并在椭圆弧两端添加水平平整段
     function drawGroove(cx) {{
         const a = data.a, b = data.b, baseHeight = 0.3;
-        const left = cx - a, right = cx + a;
+        const lip = 0.12;  // 平整段宽度（米），可调整
+        const left = cx - a - lip;    // 左侧壁向外扩展 lip
+        const right = cx + a + lip;   // 右侧壁向外扩展 lip
         const bottomY = -b - baseHeight;
         const topY = 0;
         ctx.save();
@@ -200,21 +202,26 @@ html_code = f"""
         ctx.globalAlpha = 0.7;
         ctx.strokeStyle = 'deepskyblue';
         ctx.lineWidth = 1.5;
-        // 构建封闭路径
         ctx.beginPath();
         // 左下角
         ctx.moveTo(toCanvasX(left), toCanvasY(bottomY));
         // 底边到右下角
         ctx.lineTo(toCanvasX(right), toCanvasY(bottomY));
-        // 右边垂直到椭圆右端点
+        // 右边垂直到顶部
         ctx.lineTo(toCanvasX(right), toCanvasY(topY));
-        // 沿下半椭圆弧从右端点到左端点 (角度 2π → π)
+        // 水平向左移动到椭圆右端点（平整段）
+        ctx.lineTo(toCanvasX(cx + a), toCanvasY(topY));
+        // 沿下半椭圆弧从右端点到左端点
         for (let t = 2*Math.PI; t >= Math.PI; t -= 0.05) {{
             let x = cx + a * Math.cos(t);
             let y = b * Math.sin(t);
             ctx.lineTo(toCanvasX(x), toCanvasY(y));
         }}
-        // 闭合到左下角
+        // 水平向右移动到左侧壁（平整段）
+        ctx.lineTo(toCanvasX(cx - a), toCanvasY(topY));
+        // 连接到左侧壁
+        ctx.lineTo(toCanvasX(left), toCanvasY(topY));
+        // 闭合到底边
         ctx.lineTo(toCanvasX(left), toCanvasY(bottomY));
         ctx.fill();
         ctx.stroke();
