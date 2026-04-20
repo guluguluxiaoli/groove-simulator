@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import json
 
-# 物理计算函数（保持不变）
 def compute_trajectory(M, m, a, b):
     X0 = m * a / (M + m)
     A = M * a / (M + m)
@@ -59,7 +58,6 @@ html_code = f"""
         .main-container {{
             display: flex;
             flex-wrap: wrap;
-            justify-content: flex-start;
             align-items: flex-start;
         }}
         .canvas-container {{
@@ -133,18 +131,18 @@ html_code = f"""
     const data = {json.dumps(data)};
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-
+    
     const width = canvas.width, height = canvas.height;
     const xmin = data.xmin, xmax = data.xmax;
     const ymin = data.ymin, ymax = data.ymax;
-
+    
     function toCanvasX(x) {{
         return ((x - xmin) / (xmax - xmin)) * width;
     }}
     function toCanvasY(y) {{
         return height - ((y - ymin) / (ymax - ymin)) * height;
     }}
-
+    
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -189,7 +187,7 @@ html_code = f"""
         }}
         ctx.restore();
     }}
-
+    
     function drawGroove(cx) {{
         const a = data.a, b = data.b, baseHeight = 0.3;
         const left = cx - a, right = cx + a;
@@ -214,14 +212,14 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-
+    
     function drawBall(x, y) {{
         ctx.fillStyle = 'red';
         ctx.beginPath();
         ctx.arc(toCanvasX(x), toCanvasY(y), 6, 0, 2*Math.PI);
         ctx.fill();
     }}
-
+    
     function drawTheoreticalTrajectory() {{
         const X0 = data.X0 + data.offset;
         const A = data.A;
@@ -241,7 +239,7 @@ html_code = f"""
         ctx.setLineDash([]);
         ctx.restore();
     }}
-
+    
     function drawSpecialPoints() {{
         ctx.fillStyle = 'green';
         const rightX = data.a + data.offset;
@@ -259,7 +257,7 @@ html_code = f"""
         ctx.arc(toCanvasX(lowX), toCanvasY(-data.b), 4, 0, 2*Math.PI);
         ctx.fill();
     }}
-
+    
     function drawEllipticalTrack(cx) {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -274,11 +272,11 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-
+    
     let currentFrame = 0;
     let playing = false;
     let intervalId = null;
-
+    
     function render() {{
         ctx.clearRect(0, 0, width, height);
         drawAxes();
@@ -290,7 +288,7 @@ html_code = f"""
         drawBall(data.x_ball[currentFrame] + data.offset, data.y_ball[currentFrame]);
         document.getElementById('frameInfo').innerText = currentFrame+1;
     }}
-
+    
     function play() {{
         if (intervalId) clearInterval(intervalId);
         playing = true;
@@ -301,7 +299,7 @@ html_code = f"""
             }}
         }}, 50);
     }}
-
+    
     function pause() {{
         playing = false;
         if (intervalId) {{
@@ -309,17 +307,17 @@ html_code = f"""
             intervalId = null;
         }}
     }}
-
+    
     function reset() {{
         pause();
         currentFrame = 0;
         render();
     }}
-
+    
     document.getElementById('playBtn').onclick = play;
     document.getElementById('pauseBtn').onclick = pause;
     document.getElementById('resetBtn').onclick = reset;
-
+    
     render();
 </script>
 </body>
