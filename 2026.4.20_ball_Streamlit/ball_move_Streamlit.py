@@ -1,11 +1,12 @@
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 
-# ========== 设置中文字体 ==========
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Zen Hei']
+# ========== 中文字体设置（兼容云端） ==========
+plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei', 'Microsoft YaHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 # ================== 物理计算 ==================
@@ -82,29 +83,26 @@ with st.sidebar:
     offset = st.slider("手动水平偏移", -3.0, 3.0, 0.0, 0.01)
 
     if st.button("重置默认值"):
-        st.session_state.M = 1.0
-        st.session_state.m = 1.0
-        st.session_state.a = 2.0
-        st.session_state.b = 1.0
-        st.session_state.offset = 0.0
+        st.session_state.frame_idx = 0
+        st.session_state.playing = False
+        # 重置参数通过 rerun 后滑块会恢复默认，不需要额外存
         st.rerun()
 
-# 计算轨迹
+# 计算轨迹（使用当前滑块值）
 x_ball, y_ball, groove_center_x, X0, A = compute_trajectory(M, m, a, b)
 x_ball_display = x_ball + offset
 groove_center_x_display = groove_center_x + offset
 X0_display = X0 + offset
 
-# 帧数
 frames = len(x_ball_display)
 
-# 初始化 session state 控制播放
+# 初始化 session_state
 if 'frame_idx' not in st.session_state:
     st.session_state.frame_idx = 0
 if 'playing' not in st.session_state:
     st.session_state.playing = False
 
-# 播放/暂停逻辑
+# 播放/暂停按钮
 col1, col2, col3 = st.columns([1, 1, 1])
 with col1:
     if st.button("⏸️ 暂停" if st.session_state.playing else "▶️ 播放"):
@@ -116,28 +114,14 @@ with col2:
 with col3:
     st.write(f"帧: {st.session_state.frame_idx+1}/{frames}")
 
-# 自动播放（每0.05秒增加一帧）
+# 自动刷新逻辑：只在 playing 为 True 时每 50ms 刷新一次，并前进一帧
 if st.session_state.playing:
+    # 每 50 毫秒自动刷新页面，刷新后 frame_idx 会加 1（见下方）
+    st_autorefresh(interval=50, key="auto_play")
     st.session_state.frame_idx = (st.session_state.frame_idx + 1) % frames
-    # 通过 time.sleep 不行，使用 st.empty + 定时刷新，但 Streamlit 不支持真正的定时器
-    # 这里使用 rerun 配合延迟（简单做法：每次 rerun 自动前进一帧，但需要保持播放状态）
-    # 为了让动画连续，使用 st.empty 占位并不断刷新，但 Streamlit 没有内置定时器。
-    # 替代方案：使用 st.progress 和手动步进，或者用 streamlit-autorefresh 组件。
-    # 这里为了简洁，只做手动步进+播放按钮（每次点击播放会逐渐前进，但不够流畅）。
-    # 更优雅：使用 st.experimental_rerun 和 time.sleep 不可取。
-    # 因此，我们提供一个手动滑块控制帧。
-    # 更好的做法：使用 st.slider 让用户拖动帧，配合自动播放按钮使用 JavaScript 计时器。
-    # 为了演示简单，我们放弃自动连续播放，改用帧滑块手动控制。
-    # 修改如下：
-
-# 由于 Streamlit 无内置定时器，我们提供手动滑块控制帧，并用播放按钮步进（每次点击前进一帧）
-# 或者使用 session_state + st.empty 递归刷新，但复杂。这里采用滑块方式，简单可靠。
-
-# 替换上面的播放逻辑为：
-st.session_state.frame_idx = st.slider("选择帧", 0, frames-1, st.session_state.frame_idx)
-
-# 如果需要自动播放，可以使用 streamlit_autorefresh 组件，但需要额外安装。
-# 为保持通用，我们只提供手动滑块。
+else:
+    # 暂停时，允许用户手动滑动选择帧
+    st.session_state.frame_idx = st.slider("选择帧", 0, frames-1, st.session_state.frame_idx)
 
 # 绘图
 fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
