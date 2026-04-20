@@ -17,6 +17,7 @@ static_data = {
     "M": M, "m": m, "a": a, "b": b, "offset": offset, "g": 9.8
 }
 
+# 坐标范围（确保小球始终可见）
 xmin = -a - 1.5 + offset
 xmax = a + 1.5 + offset
 ymin = -b - 0.8
@@ -79,54 +80,46 @@ html_code = f"""
     function toCanvasX(x) {{ return ((x - xmin) / (xmax - xmin)) * width; }}
     function toCanvasY(y) {{ return height - ((y - ymin) / (ymax - ymin)) * height; }}
     
-    // 物理变量：角度 theta，从右端点 (theta=0) 到左端点 (theta=PI)
-    let theta = 0.0;
-    let omega = 0.0;
+    // 角度 θ ∈ [0, π]，0 对应右端点，π 对应左端点
+    let theta = 1e-6;      // 微小初始偏移
+    let direction = 1;     // 1: 向右运动? 实际上角度增加方向是从右端点到左端点，所以方向 = 1
     let currentTime = 0.0;
     let playing = false;
     let animationId = null;
     let lastTimestamp = null;
     
-    // 等效转动惯量 I_eff(theta)
+    // 等效转动惯量 I_eff(θ)
     function I_eff(th) {{
         const cosT = Math.cos(th);
         const sinT = Math.sin(th);
         return m * b * b * cosT * cosT + (m*m/(M+m)) * a * a * sinT * sinT;
     }}
     
-    // 导数 dI_eff/dtheta
-    function dI_eff_dtheta(th) {{
-        const cosT = Math.cos(th);
+    // 由能量守恒计算角速度大小（正值）
+    function angularSpeed(th) {{
         const sinT = Math.sin(th);
-        return -2 * m * b * b * cosT * sinT + 2 * (m*m/(M+m)) * a * a * sinT * cosT;
-    }}
-    
-    // 角加速度
-    function angular_acceleration(th, om) {{
-        const cosT = Math.cos(th);
-        const dI = dI_eff_dtheta(th);
+        if (sinT <= 1e-9) return 0;
         const I = I_eff(th);
-        const numerator = -0.5 * dI * om * om - m * g * b * cosT;
-        return numerator / I;
+        return Math.sqrt(2 * m * g * b * sinT / I);
     }}
     
-    function integrate(dt) {{
-        const alpha = angular_acceleration(theta, omega);
-        omega += alpha * dt;
-        theta += omega * dt;
+    // 更新角度：欧拉法，基于当前角速度
+    function updateTheta(dt) {{
+        let omega = angularSpeed(theta);
+        let newTheta = theta + direction * omega * dt;
         // 边界反射
-        if (theta < 0) {{
-            theta = -theta;
-            omega = -omega;
+        if (newTheta < 0) {{
+            newTheta = -newTheta;
+            direction = 1;
         }}
-        if (theta > Math.PI) {{
-            theta = 2*Math.PI - theta;
-            omega = -omega;
+        if (newTheta > Math.PI) {{
+            newTheta = 2*Math.PI - newTheta;
+            direction = -1;
         }}
-        // 极小阻尼
-        omega *= 0.99999;
+        theta = newTheta;
     }}
     
+    // 根据当前角度计算凹槽中心和小球地面坐标
     function getGrooveCenter(th) {{
         const x_rel0 = a;
         const x_rel = a * Math.cos(th);
@@ -144,7 +137,7 @@ html_code = f"""
         return [ball_x, ball_y];
     }}
     
-    // 绘图函数
+    // ========== 绘图函数 ==========
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -190,6 +183,7 @@ html_code = f"""
         ctx.restore();
     }}
     
+    // 凹字形凹槽（矩形底座 + 下半椭圆弧，两侧带小平整段）
     function drawGroove(cx) {{
         const baseHeight = 0.3;
         const flatWidth = 0.1;
@@ -296,6 +290,7 @@ html_code = f"""
         document.getElementById('timeInfo').innerText = currentTime.toFixed(2);
     }}
     
+    // 动画循环
     function animationLoop(now) {{
         if (!playing) return;
         if (lastTimestamp === null) {{
@@ -305,7 +300,7 @@ html_code = f"""
         }}
         let dt = Math.min(0.02, (now - lastTimestamp) / 1000);
         if (dt > 0) {{
-            integrate(dt);
+            updateTheta(dt);
             currentTime += dt;
         }}
         lastTimestamp = now;
@@ -330,28 +325,17 @@ html_code = f"""
     
     function resetSimulation() {{
         stopAnimation();
-        theta = 0.0;
-        omega = 0.0;
-        currentTime = 0.0;
-        renderFrame();
-    }}
-    
-    // 添加一个微小扰动让小球从右端点开始运动（通过点击Play后自然积分）
-    // 但注意：当 theta=0 时，角加速度也为0，需要手动给一个微小初始速度或偏移。
-    // 改进：reset 时 theta 设为 1e-6，omega=0，这样角加速度为正。
-    function resetWithPerturbation() {{
-        stopAnimation();
         theta = 1e-6;
-        omega = 0.0;
+        direction = 1;
         currentTime = 0.0;
         renderFrame();
     }}
     
     document.getElementById('playBtn').onclick = startAnimation;
     document.getElementById('pauseBtn').onclick = stopAnimation;
-    document.getElementById('resetBtn').onclick = resetWithPerturbation;
+    document.getElementById('resetBtn').onclick = resetSimulation;
     
-    resetWithPerturbation();
+    resetSimulation();
 </script>
 </body>
 </html>
