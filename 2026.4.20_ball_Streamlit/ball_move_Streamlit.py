@@ -13,12 +13,10 @@ with st.sidebar:
     b = st.slider("Semi-minor axis b (m)", 0.5, 2.5, 1.0, 0.01)
     offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
 
-# 静态物理参数传给前端
 static_data = {
     "M": M, "m": m, "a": a, "b": b, "offset": offset, "g": 9.8
 }
 
-# 坐标范围
 xmin = -a - 1.5 + offset
 xmax = a + 1.5 + offset
 ymin = -b - 0.8
@@ -31,54 +29,19 @@ html_code = f"""
     <meta charset="utf-8">
     <style>
         body {{ margin: 0; padding: 0; font-family: sans-serif; }}
-        .main-container {{
-            display: flex;
-            flex-wrap: wrap;
-            align-items: flex-start;
-        }}
-        .canvas-container {{
-            flex: 0 0 auto;
-        }}
+        .main-container {{ display: flex; flex-wrap: wrap; align-items: flex-start; }}
+        .canvas-container {{ flex: 0 0 auto; }}
         .legend-container {{
-            margin-left: 20px;
-            background: #f9f9f9;
-            border: 1px solid #ccc;
-            padding: 12px;
-            width: 200px;
-            border-radius: 5px;
+            margin-left: 20px; background: #f9f9f9; border: 1px solid #ccc;
+            padding: 12px; width: 200px; border-radius: 5px;
         }}
         .legend-container h4 {{ margin: 0 0 10px 0; }}
-        .legend-item {{
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-        }}
-        .legend-color {{
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-            border: 1px solid #888;
-        }}
-        .controls {{
-            margin-top: 15px;
-            clear: both;
-        }}
-        button {{
-            margin: 5px;
-            padding: 5px 15px;
-            font-size: 16px;
-            cursor: pointer;
-        }}
-        .info {{
-            display: inline-block;
-            margin-left: 20px;
-            font-family: monospace;
-            font-size: 14px;
-        }}
-        canvas {{
-            border: 1px solid #ddd;
-            background: white;
-        }}
+        .legend-item {{ display: flex; align-items: center; margin-bottom: 8px; }}
+        .legend-color {{ width: 20px; height: 20px; margin-right: 10px; border: 1px solid #888; }}
+        .controls {{ margin-top: 15px; clear: both; }}
+        button {{ margin: 5px; padding: 5px 15px; font-size: 16px; cursor: pointer; }}
+        .info {{ display: inline-block; margin-left: 20px; font-family: monospace; font-size: 14px; }}
+        canvas {{ border: 1px solid #ddd; background: white; }}
     </style>
 </head>
 <body>
@@ -107,7 +70,6 @@ html_code = f"""
     const params = {json.dumps(static_data)};
     const M = params.M, m = params.m, a = params.a, b = params.b, offset = params.offset, g = params.g;
     
-    // 坐标系转换
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const width = canvas.width, height = canvas.height;
@@ -117,8 +79,8 @@ html_code = f"""
     function toCanvasX(x) {{ return ((x - xmin) / (xmax - xmin)) * width; }}
     function toCanvasY(y) {{ return height - ((y - ymin) / (ymax - ymin)) * height; }}
     
-    // 物理变量：角度 theta (0 = 右端点, π = 左端点)
-    let theta = 1e-6;      // 微小偏移，避免卡在端点
+    // 物理变量：角度 theta，从右端点 (theta=0) 到左端点 (theta=PI)
+    let theta = 0.0;
     let omega = 0.0;
     let currentTime = 0.0;
     let playing = false;
@@ -139,7 +101,7 @@ html_code = f"""
         return -2 * m * b * b * cosT * sinT + 2 * (m*m/(M+m)) * a * a * sinT * cosT;
     }}
     
-    // 角加速度 alpha = - ( dI_eff/dtheta * omega^2 / 2 + m g b cosθ ) / I_eff
+    // 角加速度
     function angular_acceleration(th, om) {{
         const cosT = Math.cos(th);
         const dI = dI_eff_dtheta(th);
@@ -148,12 +110,11 @@ html_code = f"""
         return numerator / I;
     }}
     
-    // 欧拉积分更新 (dt 秒)
     function integrate(dt) {{
         const alpha = angular_acceleration(theta, omega);
         omega += alpha * dt;
         theta += omega * dt;
-        // 边界反射：theta 范围 [0, π]
+        // 边界反射
         if (theta < 0) {{
             theta = -theta;
             omega = -omega;
@@ -162,11 +123,10 @@ html_code = f"""
             theta = 2*Math.PI - theta;
             omega = -omega;
         }}
-        // 极小阻尼防止数值误差累积
+        // 极小阻尼
         omega *= 0.99999;
     }}
     
-    // 根据当前 theta 计算凹槽中心和小球地面坐标
     function getGrooveCenter(th) {{
         const x_rel0 = a;
         const x_rel = a * Math.cos(th);
@@ -184,7 +144,7 @@ html_code = f"""
         return [ball_x, ball_y];
     }}
     
-    // 绘图函数（凹槽为“凹”字形：矩形 + 下半椭圆弧，两侧带小平整区域）
+    // 绘图函数
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -230,10 +190,9 @@ html_code = f"""
         ctx.restore();
     }}
     
-    // 绘制凹槽（矩形+下半椭圆弧，两侧加小平整段）
     function drawGroove(cx) {{
         const baseHeight = 0.3;
-        const flatWidth = 0.1;  // 两侧平整段宽度（修饰）
+        const flatWidth = 0.1;
         const left = cx - a - flatWidth;
         const right = cx + a + flatWidth;
         const bottomY = -b - baseHeight;
@@ -243,24 +202,18 @@ html_code = f"""
         ctx.globalAlpha = 0.7;
         ctx.strokeStyle = 'deepskyblue';
         ctx.lineWidth = 1.5;
-        // 构建封闭路径：从左下角开始，逆时针
         ctx.beginPath();
         ctx.moveTo(toCanvasX(left), toCanvasY(bottomY));
         ctx.lineTo(toCanvasX(right), toCanvasY(bottomY));
         ctx.lineTo(toCanvasX(right), toCanvasY(topY));
-        // 从右端点到左端点沿下半椭圆弧，但需要先水平向内缩进 flatWidth
-        // 实际椭圆弧范围 [cx-a, cx+a]，我们要连接平整段，所以弧线端点需偏移
-        const arcLeft = cx - a;
         const arcRight = cx + a;
-        // 先画右侧平整段水平线
         ctx.lineTo(toCanvasX(arcRight), toCanvasY(topY));
-        // 沿下半椭圆弧（从右到左）
         for (let t = 2*Math.PI; t >= Math.PI; t -= 0.05) {{
             let x = cx + a * Math.cos(t);
             let y = b * Math.sin(t);
             ctx.lineTo(toCanvasX(x), toCanvasY(y));
         }}
-        // 左侧平整段水平线
+        const arcLeft = cx - a;
         ctx.lineTo(toCanvasX(arcLeft), toCanvasY(topY));
         ctx.lineTo(toCanvasX(left), toCanvasY(topY));
         ctx.lineTo(toCanvasX(left), toCanvasY(bottomY));
@@ -377,6 +330,17 @@ html_code = f"""
     
     function resetSimulation() {{
         stopAnimation();
+        theta = 0.0;
+        omega = 0.0;
+        currentTime = 0.0;
+        renderFrame();
+    }}
+    
+    // 添加一个微小扰动让小球从右端点开始运动（通过点击Play后自然积分）
+    // 但注意：当 theta=0 时，角加速度也为0，需要手动给一个微小初始速度或偏移。
+    // 改进：reset 时 theta 设为 1e-6，omega=0，这样角加速度为正。
+    function resetWithPerturbation() {{
+        stopAnimation();
         theta = 1e-6;
         omega = 0.0;
         currentTime = 0.0;
@@ -385,9 +349,9 @@ html_code = f"""
     
     document.getElementById('playBtn').onclick = startAnimation;
     document.getElementById('pauseBtn').onclick = stopAnimation;
-    document.getElementById('resetBtn').onclick = resetSimulation;
+    document.getElementById('resetBtn').onclick = resetWithPerturbation;
     
-    resetSimulation();
+    resetWithPerturbation();
 </script>
 </body>
 </html>
