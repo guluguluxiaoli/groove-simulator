@@ -3,21 +3,20 @@ import numpy as np
 import json
 
 st.set_page_config(layout="wide")
-st.title("Semi-elliptical Groove Simulator (Variable Speed)")
+st.title("半椭圆轨道凹槽模拟器（变速运动）")
 
 with st.sidebar:
-    st.header("Parameters")
-    M = st.slider("Groove mass M (kg)", 0.2, 5.0, 1.0, 0.01)
-    m = st.slider("Ball mass m (kg)", 0.2, 5.0, 1.0, 0.01)
-    a = st.slider("Semi-major axis a (m)", 1.0, 4.0, 2.0, 0.01)
-    b = st.slider("Semi-minor axis b (m)", 0.5, 2.5, 1.0, 0.01)
-    offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
+    st.header("参数调节")
+    M = st.slider("凹槽质量 M (kg)", 0.2, 5.0, 1.0, 0.01)
+    m = st.slider("小球质量 m (kg)", 0.2, 5.0, 1.0, 0.01)
+    a = st.slider("半长轴 a (m)", 1.0, 4.0, 2.0, 0.01)
+    b = st.slider("半短轴 b (m)", 0.5, 2.5, 1.0, 0.01)
+    offset = st.slider("水平偏移", -3.0, 3.0, 0.0, 0.01)
 
 static_data = {
     "M": M, "m": m, "a": a, "b": b, "offset": offset, "g": 9.8
 }
 
-# 坐标范围（确保小球始终可见）
 xmin = -a - 1.5 + offset
 xmax = a + 1.5 + offset
 ymin = -b - 0.8
@@ -29,7 +28,7 @@ html_code = f"""
 <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+        body {{ margin: 0; padding: 0; font-family: 'Microsoft YaHei', 'SimHei', 'WenQuanYi Zen Hei', sans-serif; }}
         .main-container {{ display: flex; flex-wrap: wrap; align-items: flex-start; }}
         .canvas-container {{ flex: 0 0 auto; }}
         .legend-container {{
@@ -51,21 +50,21 @@ html_code = f"""
         <canvas id="canvas" width="800" height="600"></canvas>
     </div>
     <div class="legend-container">
-        <h4>Legend</h4>
-        <div class="legend-item"><div class="legend-color" style="background: blue;"></div> Theoretical trajectory (dashed)</div>
-        <div class="legend-item"><div class="legend-color" style="background: black;"></div> Elliptical groove (solid)</div>
-        <div class="legend-item"><div class="legend-color" style="background: red;"></div> Ball</div>
-        <div class="legend-item"><div class="legend-color" style="background: lightskyblue;"></div> Groove body (translucent)</div>
-        <div class="legend-item"><div class="legend-color" style="background: green;"></div> Right endpoint</div>
-        <div class="legend-item"><div class="legend-color" style="background: magenta;"></div> Left endpoint</div>
-        <div class="legend-item"><div class="legend-color" style="background: cyan;"></div> Lowest point</div>
+        <h4>图例</h4>
+        <div class="legend-item"><div class="legend-color" style="background: blue;"></div> 理论轨迹（虚线）</div>
+        <div class="legend-item"><div class="legend-color" style="background: black;"></div> 椭圆轨道（实线）</div>
+        <div class="legend-item"><div class="legend-color" style="background: red;"></div> 小球</div>
+        <div class="legend-item"><div class="legend-color" style="background: lightskyblue;"></div> 凹槽本体（半透明）</div>
+        <div class="legend-item"><div class="legend-color" style="background: green;"></div> 右端点</div>
+        <div class="legend-item"><div class="legend-color" style="background: magenta;"></div> 左端点</div>
+        <div class="legend-item"><div class="legend-color" style="background: cyan;"></div> 最低点</div>
     </div>
 </div>
 <div class="controls">
-    <button id="playBtn">▶️ Play</button>
-    <button id="pauseBtn">⏸️ Pause</button>
-    <button id="resetBtn">⏮️ Reset</button>
-    <span class="info">Time: <span id="timeInfo">0.00</span> s</span>
+    <button id="playBtn">▶️ 播放</button>
+    <button id="pauseBtn">⏸️ 暂停</button>
+    <button id="resetBtn">⏮️ 重置</button>
+    <span class="info">时间: <span id="timeInfo">0.00</span> 秒</span>
 </div>
 <script>
     const params = {json.dumps(static_data)};
@@ -80,22 +79,19 @@ html_code = f"""
     function toCanvasX(x) {{ return ((x - xmin) / (xmax - xmin)) * width; }}
     function toCanvasY(y) {{ return height - ((y - ymin) / (ymax - ymin)) * height; }}
     
-    // 角度 θ ∈ [0, π]，0 对应右端点，π 对应左端点
-    let theta = 1e-6;      // 微小初始偏移
-    let direction = 1;     // 1: 向右运动? 实际上角度增加方向是从右端点到左端点，所以方向 = 1
+    let theta = 1e-6;
+    let direction = 1;
     let currentTime = 0.0;
     let playing = false;
     let animationId = null;
     let lastTimestamp = null;
     
-    // 等效转动惯量 I_eff(θ)
     function I_eff(th) {{
         const cosT = Math.cos(th);
         const sinT = Math.sin(th);
         return m * b * b * cosT * cosT + (m*m/(M+m)) * a * a * sinT * sinT;
     }}
     
-    // 由能量守恒计算角速度大小（正值）
     function angularSpeed(th) {{
         const sinT = Math.sin(th);
         if (sinT <= 1e-9) return 0;
@@ -103,11 +99,9 @@ html_code = f"""
         return Math.sqrt(2 * m * g * b * sinT / I);
     }}
     
-    // 更新角度：欧拉法，基于当前角速度
     function updateTheta(dt) {{
         let omega = angularSpeed(theta);
         let newTheta = theta + direction * omega * dt;
-        // 边界反射
         if (newTheta < 0) {{
             newTheta = -newTheta;
             direction = 1;
@@ -119,7 +113,6 @@ html_code = f"""
         theta = newTheta;
     }}
     
-    // 根据当前角度计算凹槽中心和小球地面坐标
     function getGrooveCenter(th) {{
         const x_rel0 = a;
         const x_rel = a * Math.cos(th);
@@ -137,7 +130,6 @@ html_code = f"""
         return [ball_x, ball_y];
     }}
     
-    // ========== 绘图函数 ==========
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -183,7 +175,6 @@ html_code = f"""
         ctx.restore();
     }}
     
-    // 凹字形凹槽（矩形底座 + 下半椭圆弧，两侧带小平整段）
     function drawGroove(cx) {{
         const baseHeight = 0.3;
         const flatWidth = 0.1;
@@ -290,7 +281,6 @@ html_code = f"""
         document.getElementById('timeInfo').innerText = currentTime.toFixed(2);
     }}
     
-    // 动画循环
     function animationLoop(now) {{
         if (!playing) return;
         if (lastTimestamp === null) {{
