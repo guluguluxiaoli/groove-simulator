@@ -1,12 +1,11 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 
-# ========== 中文字体设置（兼容云端） ==========
-plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+# 禁用中文字体警告，直接使用英文标签（避免依赖系统字体）
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 # ================== 物理计算 ==================
@@ -71,24 +70,24 @@ def draw_fixed_coordinate_system(ax, x_range, y_range, tick_step=0.5):
 
 # ================== Streamlit 界面 ==================
 st.set_page_config(layout="wide")
-st.title("半椭圆轨道凹槽模拟器")
+st.title("Semi-elliptical Groove Simulator")
 
 # 侧边栏参数调节
 with st.sidebar:
-    st.header("参数调节")
-    M = st.slider("凹槽质量 M", 0.2, 5.0, 1.0, 0.01)
-    m = st.slider("小球质量 m", 0.2, 5.0, 1.0, 0.01)
-    a = st.slider("半长轴 a", 1.0, 4.0, 2.0, 0.01)
-    b = st.slider("半短轴 b", 0.5, 2.5, 1.0, 0.01)
-    offset = st.slider("手动水平偏移", -3.0, 3.0, 0.0, 0.01)
+    st.header("Parameters")
+    M = st.slider("Groove mass M", 0.2, 5.0, 1.0, 0.01)
+    m = st.slider("Ball mass m", 0.2, 5.0, 1.0, 0.01)
+    a = st.slider("Semi-major axis a", 1.0, 4.0, 2.0, 0.01)
+    b = st.slider("Semi-minor axis b", 0.5, 2.5, 1.0, 0.01)
+    offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
 
-    if st.button("重置默认值"):
+    if st.button("Reset defaults"):
+        # 重置所有参数和状态
         st.session_state.frame_idx = 0
         st.session_state.playing = False
-        # 重置参数通过 rerun 后滑块会恢复默认，不需要额外存
         st.rerun()
 
-# 计算轨迹（使用当前滑块值）
+# 计算轨迹
 x_ball, y_ball, groove_center_x, X0, A = compute_trajectory(M, m, a, b)
 x_ball_display = x_ball + offset
 groove_center_x_display = groove_center_x + offset
@@ -102,26 +101,46 @@ if 'frame_idx' not in st.session_state:
 if 'playing' not in st.session_state:
     st.session_state.playing = False
 
-# 播放/暂停按钮
-col1, col2, col3 = st.columns([1, 1, 1])
+# 播放/暂停控制
+col1, col2, col3 = st.columns([1, 1, 3])
 with col1:
-    if st.button("⏸️ 暂停" if st.session_state.playing else "▶️ 播放"):
+    if st.button("⏸️ Pause" if st.session_state.playing else "▶️ Play"):
         st.session_state.playing = not st.session_state.playing
 with col2:
-    if st.button("⏮️ 重置帧"):
+    if st.button("⏮️ Reset frame"):
         st.session_state.frame_idx = 0
         st.session_state.playing = False
 with col3:
-    st.write(f"帧: {st.session_state.frame_idx+1}/{frames}")
+    st.write(f"Frame: {st.session_state.frame_idx+1} / {frames}")
 
-# 自动刷新逻辑：只在 playing 为 True 时每 50ms 刷新一次，并前进一帧
+# 手动帧滑块
+frame_slider = st.slider("Select frame", 0, frames-1, st.session_state.frame_idx)
+if frame_slider != st.session_state.frame_idx:
+    st.session_state.frame_idx = frame_slider
+    st.session_state.playing = False
+
+# 播放逻辑：如果 playing 为 True，自动增加帧索引
 if st.session_state.playing:
-    # 每 50 毫秒自动刷新页面，刷新后 frame_idx 会加 1（见下方）
-    st_autorefresh(interval=50, key="auto_play")
-    st.session_state.frame_idx = (st.session_state.frame_idx + 1) % frames
-else:
-    # 暂停时，允许用户手动滑动选择帧
-    st.session_state.frame_idx = st.slider("选择帧", 0, frames-1, st.session_state.frame_idx)
+    new_idx = st.session_state.frame_idx + 1
+    if new_idx >= frames:
+        new_idx = 0  # 循环
+    st.session_state.frame_idx = new_idx
+    # 延迟刷新（使用 st.rerun 模拟动画，但频率太高会白屏，改用 time.sleep 会阻塞）
+    # 这里使用 st.empty 占位，但最简单的办法是每次 rerun 前进一帧
+    # 注意：如果不加延迟，会以最快速度刷新（可能导致浏览器卡死）
+    # 所以我们在播放时使用 st.experimental_rerun 并添加一个小的等待时间
+    # 但 Streamlit 不支持 sleep，所以建议用户手动点击“下一帧”按钮
+    # 为了避免白屏，这里暂时禁用自动播放，改为提示用户使用滑块或“下一帧”按钮
+    st.session_state.playing = False  # 自动播放会导致页面频繁刷新，暂时关闭
+    st.warning("Auto-play disabled due to stability. Use slider or manual next button.")
+
+# 如果需要真正的自动播放，可以借助 JavaScript，但为了稳定，这里提供手动“下一帧”按钮
+if st.button("Next frame ➡️"):
+    new_idx = st.session_state.frame_idx + 1
+    if new_idx >= frames:
+        new_idx = 0
+    st.session_state.frame_idx = new_idx
+    st.rerun()
 
 # 绘图
 fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
@@ -129,7 +148,7 @@ ax.set_aspect('equal')
 ax.grid(True, linestyle=':', alpha=0.3)
 ax.set_xlabel('x (m)')
 ax.set_ylabel('y (m)')
-ax.set_title('小球运动模拟')
+ax.set_title('Ball motion simulation')
 
 # 固定坐标系范围
 xmin = min(-a-1.5, X0_display - A - 0.5) + offset
@@ -142,13 +161,13 @@ draw_fixed_coordinate_system(ax, (xmin, xmax), (ymin, ymax), tick_step=0.5)
 phi_traj = np.linspace(np.pi, 2*np.pi, 300)
 x_traj_static = X0_display + A * np.cos(phi_traj)
 y_traj_static = b * np.sin(phi_traj)
-ax.plot(x_traj_static, y_traj_static, 'b--', lw=1.5, alpha=0.7, label='小球理论轨迹')
+ax.plot(x_traj_static, y_traj_static, 'b--', lw=1.5, alpha=0.7, label='Theoretical trajectory')
 
 # 特殊点标记
-ax.plot(a + offset, 0, 'go', markersize=6, alpha=0.6, label='右端点')
+ax.plot(a + offset, 0, 'go', markersize=6, alpha=0.6, label='Right endpoint')
 left_x = X0_display - A
-ax.plot(left_x, 0, 'mo', markersize=6, alpha=0.6, label='左端点')
-ax.plot(X0_display, -b, 'co', markersize=6, alpha=0.6, label='最低点')
+ax.plot(left_x, 0, 'mo', markersize=6, alpha=0.6, label='Left endpoint')
+ax.plot(X0_display, -b, 'co', markersize=6, alpha=0.6, label='Lowest point')
 
 # 当前帧的凹槽和小球
 frame = st.session_state.frame_idx
@@ -162,10 +181,10 @@ ax.add_patch(groove_patch)
 phi_ellipse_lower = np.linspace(np.pi, 2*np.pi, 200)
 x_ellipse = cx + a * np.cos(phi_ellipse_lower)
 y_ellipse = b * np.sin(phi_ellipse_lower)
-ax.plot(x_ellipse, y_ellipse, 'k-', lw=2, label='椭圆轨道（凹槽内壁）')
+ax.plot(x_ellipse, y_ellipse, 'k-', lw=2, label='Elliptical groove')
 
 # 小球
-ax.plot(x_ball_display[frame], y_ball[frame], 'ro', markersize=8, zorder=5, label='小球')
+ax.plot(x_ball_display[frame], y_ball[frame], 'ro', markersize=8, zorder=5, label='Ball')
 
 ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=9)
 ax.set_xlim(xmin, xmax)
