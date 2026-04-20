@@ -58,6 +58,7 @@ html_code = f"""
         .main-container {{
             display: flex;
             flex-wrap: wrap;
+            justify-content: flex-start;
             align-items: flex-start;
         }}
         .canvas-container {{
@@ -131,18 +132,18 @@ html_code = f"""
     const data = {json.dumps(data)};
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    
+
     const width = canvas.width, height = canvas.height;
     const xmin = data.xmin, xmax = data.xmax;
     const ymin = data.ymin, ymax = data.ymax;
-    
+
     function toCanvasX(x) {{
         return ((x - xmin) / (xmax - xmin)) * width;
     }}
     function toCanvasY(y) {{
         return height - ((y - ymin) / (ymax - ymin)) * height;
     }}
-    
+
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -187,7 +188,8 @@ html_code = f"""
         }}
         ctx.restore();
     }}
-    
+
+    // 优化后的凹槽绘制：完整填充矩形+椭圆弧区域
     function drawGroove(cx) {{
         const a = data.a, b = data.b, baseHeight = 0.3;
         const left = cx - a, right = cx + a;
@@ -198,28 +200,34 @@ html_code = f"""
         ctx.globalAlpha = 0.7;
         ctx.strokeStyle = 'deepskyblue';
         ctx.lineWidth = 1.5;
+        // 构建封闭路径
         ctx.beginPath();
-        ctx.rect(toCanvasX(left), toCanvasY(bottomY), toCanvasX(right)-toCanvasX(left), toCanvasY(topY)-toCanvasY(bottomY));
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        for (let t = Math.PI; t <= 2*Math.PI; t+=0.05) {{
+        // 左下角
+        ctx.moveTo(toCanvasX(left), toCanvasY(bottomY));
+        // 底边到右下角
+        ctx.lineTo(toCanvasX(right), toCanvasY(bottomY));
+        // 右边垂直到椭圆右端点
+        ctx.lineTo(toCanvasX(right), toCanvasY(topY));
+        // 沿下半椭圆弧从右端点到左端点 (角度 2π → π)
+        for (let t = 2*Math.PI; t >= Math.PI; t -= 0.05) {{
             let x = cx + a * Math.cos(t);
             let y = b * Math.sin(t);
-            if (t === Math.PI) ctx.moveTo(toCanvasX(x), toCanvasY(y));
-            else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+            ctx.lineTo(toCanvasX(x), toCanvasY(y));
         }}
+        // 闭合到左下角
+        ctx.lineTo(toCanvasX(left), toCanvasY(bottomY));
+        ctx.fill();
         ctx.stroke();
         ctx.restore();
     }}
-    
+
     function drawBall(x, y) {{
         ctx.fillStyle = 'red';
         ctx.beginPath();
         ctx.arc(toCanvasX(x), toCanvasY(y), 6, 0, 2*Math.PI);
         ctx.fill();
     }}
-    
+
     function drawTheoreticalTrajectory() {{
         const X0 = data.X0 + data.offset;
         const A = data.A;
@@ -239,7 +247,7 @@ html_code = f"""
         ctx.setLineDash([]);
         ctx.restore();
     }}
-    
+
     function drawSpecialPoints() {{
         ctx.fillStyle = 'green';
         const rightX = data.a + data.offset;
@@ -257,7 +265,7 @@ html_code = f"""
         ctx.arc(toCanvasX(lowX), toCanvasY(-data.b), 4, 0, 2*Math.PI);
         ctx.fill();
     }}
-    
+
     function drawEllipticalTrack(cx) {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -272,11 +280,11 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-    
+
     let currentFrame = 0;
     let playing = false;
     let intervalId = null;
-    
+
     function render() {{
         ctx.clearRect(0, 0, width, height);
         drawAxes();
@@ -288,7 +296,7 @@ html_code = f"""
         drawBall(data.x_ball[currentFrame] + data.offset, data.y_ball[currentFrame]);
         document.getElementById('frameInfo').innerText = currentFrame+1;
     }}
-    
+
     function play() {{
         if (intervalId) clearInterval(intervalId);
         playing = true;
@@ -299,7 +307,7 @@ html_code = f"""
             }}
         }}, 50);
     }}
-    
+
     function pause() {{
         playing = false;
         if (intervalId) {{
@@ -307,17 +315,17 @@ html_code = f"""
             intervalId = null;
         }}
     }}
-    
+
     function reset() {{
         pause();
         currentFrame = 0;
         render();
     }}
-    
+
     document.getElementById('playBtn').onclick = play;
     document.getElementById('pauseBtn').onclick = pause;
     document.getElementById('resetBtn').onclick = reset;
-    
+
     render();
 </script>
 </body>
