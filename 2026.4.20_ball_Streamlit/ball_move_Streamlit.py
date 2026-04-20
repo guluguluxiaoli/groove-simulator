@@ -2,21 +2,17 @@ import streamlit as st
 import numpy as np
 import json
 
-
-# ================== 物理计算 ==================
 def compute_trajectory(M, m, a, b):
     X0 = m * a / (M + m)
     A = M * a / (M + m)
-    phi_forward = np.linspace(2 * np.pi, np.pi, 100)
-    phi_back = np.linspace(np.pi, 2 * np.pi, 100)
+    phi_forward = np.linspace(2*np.pi, np.pi, 100)
+    phi_back = np.linspace(np.pi, 2*np.pi, 100)
     phi_frames = np.concatenate([phi_forward, phi_back])
     x_ball = X0 + A * np.cos(phi_frames)
     y_ball = b * np.sin(phi_frames)
     groove_center_x = m * (a - x_ball) / M
     return x_ball.tolist(), y_ball.tolist(), groove_center_x.tolist(), float(X0), float(A)
 
-
-# Streamlit UI
 st.set_page_config(layout="wide")
 st.title("Semi-elliptical Groove Simulator")
 
@@ -28,17 +24,14 @@ with st.sidebar:
     b = st.slider("Semi-minor axis b", 0.5, 2.5, 1.0, 0.01)
     offset = st.slider("Horizontal offset", -3.0, 3.0, 0.0, 0.01)
 
-# 计算轨迹数据
 x_ball, y_ball, groove_center_x, X0, A = compute_trajectory(M, m, a, b)
 frames = len(x_ball)
 
-# 固定坐标范围
-xmin = min(-a - 1.5, (X0 + offset) - A - 0.5) + offset
+xmin = min(-a-1.5, (X0 + offset) - A - 0.5) + offset
 xmax = max(a + X0 + 1.5, a + offset + 0.5) + 0.5
 ymin = -b - 0.8
 ymax = b + 0.8
 
-# 准备传递给 JavaScript 的数据
 data = {
     "frames": frames,
     "x_ball": x_ball,
@@ -55,37 +48,69 @@ data = {
     "A": A
 }
 
-# 使用 st.components.v1.html 嵌入自定义前端动画（包含图例）
 html_code = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; padding: 0; }}
-        .container {{ display: flex; flex-wrap: wrap; align-items: flex-start; }}
-        canvas {{ border: 1px solid #ddd; background: white; margin-right: 20px; }}
-        .legend {{
+        body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+        .main-container {{
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }}
+        .canvas-container {{
+            flex: 0 0 auto;
+        }}
+        .legend-container {{
+            margin-left: 20px;
             background: #f9f9f9;
             border: 1px solid #ccc;
-            padding: 10px;
-            font-family: sans-serif;
-            font-size: 14px;
-            line-height: 1.6;
-            width: 180px;
+            padding: 12px;
+            width: 200px;
+            border-radius: 5px;
         }}
-        .legend h4 {{ margin: 0 0 8px 0; }}
-        .legend-item {{ display: flex; align-items: center; margin-bottom: 6px; }}
-        .legend-color {{ width: 20px; height: 20px; margin-right: 8px; }}
-        .controls {{ margin-top: 10px; }}
-        button {{ margin: 5px; padding: 5px 15px; font-size: 16px; }}
-        .info {{ display: inline-block; margin-left: 20px; font-family: monospace; }}
+        .legend-container h4 {{ margin: 0 0 10px 0; }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #888;
+        }}
+        .controls {{
+            margin-top: 15px;
+            clear: both;
+        }}
+        button {{
+            margin: 5px;
+            padding: 5px 15px;
+            font-size: 16px;
+            cursor: pointer;
+        }}
+        .info {{
+            display: inline-block;
+            margin-left: 20px;
+            font-family: monospace;
+            font-size: 14px;
+        }}
+        canvas {{
+            border: 1px solid #ddd;
+            background: white;
+        }}
     </style>
 </head>
 <body>
-<div class="container">
-    <canvas id="canvas" width="800" height="600"></canvas>
-    <div class="legend">
+<div class="main-container">
+    <div class="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+    <div class="legend-container">
         <h4>Legend</h4>
         <div class="legend-item"><div class="legend-color" style="background: blue;"></div> Theoretical trajectory (dashed)</div>
         <div class="legend-item"><div class="legend-color" style="background: black;"></div> Elliptical groove (solid)</div>
@@ -106,19 +131,18 @@ html_code = f"""
     const data = {json.dumps(data)};
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-
+    
     const width = canvas.width, height = canvas.height;
     const xmin = data.xmin, xmax = data.xmax;
     const ymin = data.ymin, ymax = data.ymax;
-
+    
     function toCanvasX(x) {{
         return ((x - xmin) / (xmax - xmin)) * width;
     }}
     function toCanvasY(y) {{
         return height - ((y - ymin) / (ymax - ymin)) * height;
     }}
-
-    // 绘制坐标系（带箭头、刻度）
+    
     function drawAxes() {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -163,8 +187,7 @@ html_code = f"""
         }}
         ctx.restore();
     }}
-
-    // 绘制凹槽（矩形+半椭圆填充，半透明）
+    
     function drawGroove(cx) {{
         const a = data.a, b = data.b, baseHeight = 0.3;
         const left = cx - a, right = cx + a;
@@ -179,7 +202,6 @@ html_code = f"""
         ctx.rect(toCanvasX(left), toCanvasY(bottomY), toCanvasX(right)-toCanvasX(left), toCanvasY(topY)-toCanvasY(bottomY));
         ctx.fill();
         ctx.stroke();
-        // 半椭圆弧（下半部分）
         ctx.beginPath();
         for (let t = Math.PI; t <= 2*Math.PI; t+=0.05) {{
             let x = cx + a * Math.cos(t);
@@ -190,17 +212,14 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-
-    // 绘制小球
+    
     function drawBall(x, y) {{
         ctx.fillStyle = 'red';
-        ctx.shadowBlur = 0;
         ctx.beginPath();
         ctx.arc(toCanvasX(x), toCanvasY(y), 6, 0, 2*Math.PI);
         ctx.fill();
     }}
-
-    // 绘制理论轨迹（半椭圆虚线）
+    
     function drawTheoreticalTrajectory() {{
         const X0 = data.X0 + data.offset;
         const A = data.A;
@@ -220,8 +239,7 @@ html_code = f"""
         ctx.setLineDash([]);
         ctx.restore();
     }}
-
-    // 绘制特殊点
+    
     function drawSpecialPoints() {{
         ctx.fillStyle = 'green';
         const rightX = data.a + data.offset;
@@ -239,8 +257,7 @@ html_code = f"""
         ctx.arc(toCanvasX(lowX), toCanvasY(-data.b), 4, 0, 2*Math.PI);
         ctx.fill();
     }}
-
-    // 绘制椭圆轨道线（黑色实线）
+    
     function drawEllipticalTrack(cx) {{
         ctx.save();
         ctx.strokeStyle = 'black';
@@ -255,23 +272,23 @@ html_code = f"""
         ctx.stroke();
         ctx.restore();
     }}
-
+    
     let currentFrame = 0;
     let playing = false;
     let intervalId = null;
-
+    
     function render() {{
         ctx.clearRect(0, 0, width, height);
         drawAxes();
         drawTheoreticalTrajectory();
         drawSpecialPoints();
         const cx = data.groove_center_x[currentFrame] + data.offset;
-        drawGroove(cx);            // 凹槽半透明填充，先画
-        drawEllipticalTrack(cx);   // 黑色椭圆轨道线，覆盖在凹槽上
+        drawGroove(cx);
+        drawEllipticalTrack(cx);
         drawBall(data.x_ball[currentFrame] + data.offset, data.y_ball[currentFrame]);
         document.getElementById('frameInfo').innerText = currentFrame+1;
     }}
-
+    
     function play() {{
         if (intervalId) clearInterval(intervalId);
         playing = true;
@@ -282,7 +299,7 @@ html_code = f"""
             }}
         }}, 50);
     }}
-
+    
     function pause() {{
         playing = false;
         if (intervalId) {{
@@ -290,20 +307,20 @@ html_code = f"""
             intervalId = null;
         }}
     }}
-
+    
     function reset() {{
         pause();
         currentFrame = 0;
         render();
     }}
-
+    
     document.getElementById('playBtn').onclick = play;
     document.getElementById('pauseBtn').onclick = pause;
     document.getElementById('resetBtn').onclick = reset;
-
+    
     render();
 </script>
 </body>
 </html>
 """
-st.components.v1.html(html_code, height=700, width=1000)
+st.components.v1.html(html_code, height=700, width=1100)
