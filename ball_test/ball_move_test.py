@@ -1,4 +1,4 @@
-# 最终部署版本
+# 最终部署版本（响应式布局）
 import streamlit as st
 import numpy as np
 import json
@@ -28,21 +28,88 @@ html_code = f"""
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ margin: 0; padding: 0; font-family: 'Microsoft YaHei', 'SimHei', 'WenQuanYi Zen Hei', sans-serif; }}
-        .main-container {{ display: flex; flex-wrap: wrap; align-items: flex-start; }}
-        .canvas-container {{ flex: 0 0 auto; }}
-        .legend-container {{
-            margin-left: 20px; background: #f9f9f9; border: 1px solid #ccc;
-            padding: 12px; width: 200px; border-radius: 5px;
+        * {{
+            box-sizing: border-box;
         }}
-        .legend-container h4 {{ margin: 0 0 10px 0; }}
-        .legend-item {{ display: flex; align-items: center; margin-bottom: 8px; }}
-        .legend-color {{ width: 20px; height: 20px; margin-right: 10px; border: 1px solid #888; }}
-        .controls {{ margin-top: 15px; clear: both; }}
-        button {{ margin: 5px; padding: 5px 15px; font-size: 16px; cursor: pointer; }}
-        .info {{ display: inline-block; margin-left: 20px; font-family: monospace; font-size: 14px; }}
-        canvas {{ border: 1px solid #ddd; background: white; }}
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: 'Microsoft YaHei', 'SimHei', 'WenQuanYi Zen Hei', sans-serif;
+            background: transparent;
+        }}
+        .main-container {{
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 20px;
+        }}
+        .canvas-container {{
+            flex: 1 1 auto;
+            min-width: 280px;
+        }}
+        .legend-container {{
+            flex: 0 0 auto;
+            width: 220px;
+            background: #f9f9f9;
+            border: 1px solid #ccc;
+            padding: 12px;
+            border-radius: 5px;
+        }}
+        .legend-container h4 {{
+            margin: 0 0 10px 0;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #888;
+            flex-shrink: 0;
+        }}
+        .controls {{
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }}
+        button {{
+            padding: 5px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            white-space: nowrap;
+        }}
+        .info {{
+            font-family: monospace;
+            font-size: 14px;
+            margin-left: 10px;
+        }}
+        canvas {{
+            display: block;
+            width: 100%;
+            height: auto;
+            max-width: 800px;
+            border: 1px solid #ddd;
+            background: white;
+            margin: 0 auto;
+        }}
+        @media (max-width: 700px) {{
+            .main-container {{
+                flex-direction: column;
+            }}
+            .legend-container {{
+                width: 100%;
+            }}
+            .controls {{
+                justify-content: center;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -331,4 +398,5 @@ html_code = f"""
 </body>
 </html>
 """
-st.components.v1.html(html_code, height=700, width=1100)
+# 让组件自适应宽度（不指定width，Streamlit会自动撑满）
+st.components.v1.html(html_code, height=700)
